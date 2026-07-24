@@ -46,6 +46,13 @@ public struct ServiceSnapshot: Equatable, Sendable {
         self.state = state
         self.availableAction = availableAction
     }
+
+    public func overlayingOperationFailure(_ message: String) -> ServiceSnapshot {
+        ServiceSnapshot(
+            state: .failed(message),
+            availableAction: availableAction
+        )
+    }
 }
 
 public struct LaunchCommand: Equatable, Sendable {

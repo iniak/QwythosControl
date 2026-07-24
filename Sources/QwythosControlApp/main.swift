@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         availableAction: nil
     )
     private var operationInProgress = false
+    private var operationGeneration = 0
     private var refreshTask: Task<Void, Never>?
 
     override init() {
@@ -118,12 +119,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.menu = menu
     }
 
-    private func refresh() async {
+    @discardableResult
+    private func refresh(renderSnapshot: Bool = true) async -> ServiceSnapshot? {
+        let refreshGeneration = operationGeneration
         let snapshot = await controller.refreshSnapshot()
-        guard !operationInProgress else { return }
+        guard !operationInProgress,
+              refreshGeneration == operationGeneration
+        else {
+            return nil
+        }
 
         currentSnapshot = snapshot
-        render(snapshot)
+        if renderSnapshot {
+            render(snapshot)
+        }
+        return snapshot
     }
 
     @objc private func toggleService() {
@@ -134,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         operationInProgress = true
+        operationGeneration += 1
         render(
             ServiceSnapshot(
                 state: action.inProgressState,
@@ -157,9 +168,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             operationInProgress = false
-            await refresh()
+            let refreshedSnapshot = await refresh(
+                renderSnapshot: failureMessage == nil
+            )
 
             if let failureMessage {
+                let failureSnapshot = (refreshedSnapshot ?? currentSnapshot)
+                    .overlayingOperationFailure(failureMessage)
+                currentSnapshot = failureSnapshot
+                render(failureSnapshot)
                 await notifyFailure(failureMessage)
             }
         }

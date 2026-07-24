@@ -15,6 +15,21 @@ final class ServiceModelTests: XCTestCase {
         XCTAssertEqual(ServiceAction.stop.inProgressState, .stopping)
     }
 
+    func testOperationFailureOverlayPreservesObservedAvailableAction() {
+        let observedSnapshot = ServiceSnapshot(
+            state: .running,
+            availableAction: .stop
+        )
+
+        XCTAssertEqual(
+            observedSnapshot.overlayingOperationFailure("launchctl bootout failed"),
+            ServiceSnapshot(
+                state: .failed("launchctl bootout failed"),
+                availableAction: .stop
+            )
+        )
+    }
+
     func testLaunchCommandsUseCurrentUserDomain() {
         let config = ServiceConfiguration(
             uid: 501,
