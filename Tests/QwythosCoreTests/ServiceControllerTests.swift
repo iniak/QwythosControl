@@ -1,5 +1,5 @@
 import XCTest
-import QwythosCore
+@testable import QwythosCore
 
 final class ServiceControllerTests: XCTestCase {
     func testRefreshReportsRunningWhenJobAndHealthExist() async {
@@ -98,11 +98,11 @@ final class ServiceControllerTests: XCTestCase {
         await runner.waitForCallCount(1)
 
         async let stop: Void = controller.stop()
-        for _ in 0..<100 {
-            await Task.yield()
-        }
+        await controller.waitForOperationAttemptCount(2)
 
+        let queuedOperationCount = await controller.queuedOperationCount()
         let commandsBeforeStartCompletes = await runner.recordedCommands()
+        XCTAssertEqual(queuedOperationCount, 1)
         XCTAssertEqual(commandsBeforeStartCompletes, [ServiceConfiguration.test.startCommand])
 
         await runner.releaseNext()

@@ -80,12 +80,19 @@ public struct URLSessionHealthChecker: HealthChecking {
 }
 
 public actor ServiceController {
+    private struct AttemptWaiter {
+        let count: Int
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
     public let configuration: ServiceConfiguration
     private let runner: any CommandRunning
     private let healthChecker: any HealthChecking
     private var lastError: String?
     private var operationInProgress = false
     private var operationWaiters: [CheckedContinuation<Void, Never>] = []
+    private var operationAttemptCount = 0
+    private var attemptWaiters: [AttemptWaiter] = []
 
     public init(
         configuration: ServiceConfiguration,
@@ -138,7 +145,24 @@ public actor ServiceController {
         }
     }
 
+    func waitForOperationAttemptCount(_ count: Int) async {
+        guard operationAttemptCount < count else {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            attemptWaiters.append(AttemptWaiter(count: count, continuation: continuation))
+        }
+    }
+
+    func queuedOperationCount() -> Int {
+        operationWaiters.count
+    }
+
     private func beginOperation() async {
+        operationAttemptCount += 1
+        resumeSatisfiedAttemptWaiters()
+
         guard operationInProgress else {
             operationInProgress = true
             return
@@ -156,5 +180,13 @@ public actor ServiceController {
         }
 
         operationWaiters.removeFirst().resume()
+    }
+
+    private func resumeSatisfiedAttemptWaiters() {
+        let satisfied = attemptWaiters.filter { $0.count <= operationAttemptCount }
+        attemptWaiters.removeAll { $0.count <= operationAttemptCount }
+        for waiter in satisfied {
+            waiter.continuation.resume()
+        }
     }
 }
