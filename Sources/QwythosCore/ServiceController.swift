@@ -29,6 +29,30 @@ public enum ServiceControlError: LocalizedError, Sendable {
     }
 }
 
+private enum ProcessRunOutcome: Sendable {
+    case terminated(Int32)
+    case launchFailed(String)
+}
+
+private final class ProcessRunContinuationGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didResume = false
+
+    func resume(
+        _ continuation: CheckedContinuation<ProcessRunOutcome, Never>,
+        returning outcome: ProcessRunOutcome
+    ) {
+        lock.lock()
+        let shouldResume = !didResume
+        didResume = true
+        lock.unlock()
+
+        if shouldResume {
+            continuation.resume(returning: outcome)
+        }
+    }
+}
+
 public struct SystemCommandRunner: CommandRunning {
     public init() {}
 
@@ -40,22 +64,40 @@ public struct SystemCommandRunner: CommandRunning {
         process.standardOutput = pipe
         process.standardError = pipe
 
-        do {
-            try process.run()
-        } catch {
-            return CommandResult(exitCode: -1, output: error.localizedDescription)
+        let continuationGate = ProcessRunContinuationGate()
+        let outputTask = Task.detached {
+            pipe.fileHandleForReading.readDataToEndOfFile()
         }
+        let outcome: ProcessRunOutcome = await withCheckedContinuation { continuation in
+            process.terminationHandler = { terminatedProcess in
+                continuationGate.resume(
+                    continuation,
+                    returning: .terminated(terminatedProcess.terminationStatus)
+                )
+            }
 
-        let waitTask = Task.detached { () -> Int32 in
-            process.waitUntilExit()
-            return process.terminationStatus
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                try? pipe.fileHandleForWriting.close()
+                continuationGate.resume(
+                    continuation,
+                    returning: .launchFailed(error.localizedDescription)
+                )
+            }
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let data = await outputTask.value
 
-        return CommandResult(
-            exitCode: await waitTask.value,
-            output: String(decoding: data, as: UTF8.self)
-        )
+        switch outcome {
+        case .terminated(let exitCode):
+            return CommandResult(
+                exitCode: exitCode,
+                output: String(decoding: data, as: UTF8.self)
+            )
+        case .launchFailed(let message):
+            return CommandResult(exitCode: -1, output: message)
+        }
     }
 }
 

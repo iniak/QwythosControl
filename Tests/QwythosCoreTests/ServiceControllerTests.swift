@@ -113,6 +113,41 @@ final class ServiceControllerTests: XCTestCase {
     }
 }
 
+final class SystemCommandRunnerTests: XCTestCase {
+    func testFastExitingProcessesCompleteReliably() async {
+        let runner = SystemCommandRunner()
+        let command = LaunchCommand(executable: "/usr/bin/true", arguments: [])
+
+        for _ in 0..<100 {
+            let result = await runner.run(command)
+            XCTAssertEqual(result.exitCode, 0)
+            XCTAssertEqual(result.output, "")
+        }
+    }
+
+    func testLargeOutputIsDrainedWithoutBlockingProcessExit() async {
+        let result = await SystemCommandRunner().run(
+            LaunchCommand(executable: "/usr/bin/seq", arguments: ["1", "20000"])
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.hasPrefix("1\n2\n3\n"))
+        XCTAssertTrue(result.output.hasSuffix("20000\n"))
+    }
+
+    func testLaunchFailureReturnsWithoutWaitingForPipeEOF() async {
+        let result = await SystemCommandRunner().run(
+            LaunchCommand(
+                executable: "/path/that/does/not/exist/qwythos-command",
+                arguments: []
+            )
+        )
+
+        XCTAssertEqual(result.exitCode, -1)
+        XCTAssertFalse(result.output.isEmpty)
+    }
+}
+
 private actor FakeRunner: CommandRunning {
     private let printExitCode: Int32
     private let startExitCode: Int32
