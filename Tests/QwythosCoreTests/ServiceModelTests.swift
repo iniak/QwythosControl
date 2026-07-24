@@ -1,5 +1,5 @@
 import XCTest
-@testable import QwythosCore
+import QwythosCore
 
 final class ServiceModelTests: XCTestCase {
     func testStateResolution() {

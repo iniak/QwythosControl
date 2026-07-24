@@ -30,6 +30,22 @@ public struct ServiceConfiguration: Sendable {
     public let chatURL: URL
     public let logsPath: String
 
+    public init(
+        uid: uid_t,
+        label: String,
+        plistPath: String,
+        healthURL: URL,
+        chatURL: URL,
+        logsPath: String
+    ) {
+        self.uid = uid
+        self.label = label
+        self.plistPath = plistPath
+        self.healthURL = healthURL
+        self.chatURL = chatURL
+        self.logsPath = logsPath
+    }
+
     public var domain: String { "gui/\(uid)" }
     public var serviceTarget: String { "\(domain)/\(label)" }
     public var startCommand: LaunchCommand {
