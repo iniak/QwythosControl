@@ -16,6 +16,117 @@ final class ServiceControllerTests: XCTestCase {
         XCTAssertEqual(state, .running)
     }
 
+    func testRefreshReportsStartingAndStopActionForLoadedWaitingJob() async {
+        let runner = FakeRunner(
+            printExitCode: 0,
+            printOutput: """
+            gui/501/com.local.qwythos-9b = {
+                state = waiting
+                last exit code = 0
+            }
+            """
+        )
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: false)
+        )
+
+        let snapshot = await controller.refreshSnapshot()
+
+        XCTAssertEqual(
+            snapshot,
+            ServiceSnapshot(state: .starting, availableAction: .stop)
+        )
+    }
+
+    func testRefreshReportsFailedLoadedJobWithActionableExitCodeAndStopAction() async {
+        let runner = FakeRunner(
+            printExitCode: 0,
+            printOutput: """
+            gui/501/com.local.qwythos-9b = {
+                state = waiting
+                last exit code = 78
+            }
+            """
+        )
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: false)
+        )
+
+        let snapshot = await controller.refreshSnapshot()
+
+        guard case .failed(let message) = snapshot.state else {
+            return XCTFail("Expected a failed snapshot, got \(snapshot)")
+        }
+        XCTAssertTrue(message.contains("last exit code 78"))
+        XCTAssertEqual(snapshot.availableAction, .stop)
+    }
+
+    func testRefreshTreatsOnlyCanonicalNotFoundResponseAsStopped() async {
+        let runner = FakeRunner(
+            printExitCode: 113,
+            printOutput: """
+            Bad request.
+            Could not find service "com.local.qwythos-9b" in domain for user gui: 501
+            """
+        )
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: false),
+            fileChecker: FakeFileChecker(exists: true)
+        )
+
+        let snapshot = await controller.refreshSnapshot()
+
+        XCTAssertEqual(
+            snapshot,
+            ServiceSnapshot(state: .stopped, availableAction: .start)
+        )
+    }
+
+    func testRefreshReportsLaunchctlQueryErrorsAsFailedWithoutGuessingToggleAction() async {
+        let runner = FakeRunner(
+            printExitCode: 1,
+            printOutput: "Operation not permitted"
+        )
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: false)
+        )
+
+        let snapshot = await controller.refreshSnapshot()
+
+        guard case .failed(let message) = snapshot.state else {
+            return XCTFail("Expected a failed snapshot, got \(snapshot)")
+        }
+        XCTAssertTrue(message.contains("Operation not permitted"))
+        XCTAssertNil(snapshot.availableAction)
+    }
+
+    func testRefreshReportsMissingPlistBeforeOfferingStart() async {
+        let runner = FakeRunner(printExitCode: 113)
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: false),
+            fileChecker: FakeFileChecker(exists: false)
+        )
+
+        let snapshot = await controller.refreshSnapshot()
+
+        guard case .failed(let message) = snapshot.state else {
+            return XCTFail("Expected a failed snapshot, got \(snapshot)")
+        }
+        XCTAssertTrue(message.contains(ServiceConfiguration.test.plistPath))
+        XCTAssertTrue(message.localizedCaseInsensitiveContains("missing"))
+        XCTAssertNil(snapshot.availableAction)
+    }
+
     func testStartRunsBootstrapCommand() async throws {
         let runner = FakeRunner(printExitCode: 1)
         let controller = ServiceController(
@@ -86,6 +197,61 @@ final class ServiceControllerTests: XCTestCase {
         }
     }
 
+    func testFailedStopDoesNotOverrideSubsequentRunningObservation() async {
+        let runner = FakeRunner(
+            printExitCode: 0,
+            stopExitCode: 1,
+            stopOutput: "bootout failed"
+        )
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: true)
+        )
+
+        do {
+            try await controller.stop()
+            XCTFail("Expected stop to throw")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "bootout failed")
+        }
+
+        let snapshot = await controller.refreshSnapshot()
+
+        XCTAssertEqual(
+            snapshot,
+            ServiceSnapshot(state: .running, availableAction: .stop)
+        )
+    }
+
+    func testFailedStartDoesNotOverrideSubsequentStoppedObservation() async {
+        let runner = FakeRunner(
+            printExitCode: 113,
+            startExitCode: 1,
+            startOutput: "bootstrap failed"
+        )
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: false),
+            fileChecker: FakeFileChecker(exists: true)
+        )
+
+        do {
+            try await controller.start()
+            XCTFail("Expected start to throw")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "bootstrap failed")
+        }
+
+        let snapshot = await controller.refreshSnapshot()
+
+        XCTAssertEqual(
+            snapshot,
+            ServiceSnapshot(state: .stopped, availableAction: .start)
+        )
+    }
+
     func testOperationsDoNotEnterRunnerConcurrently() async throws {
         let runner = BlockingRunner()
         let controller = ServiceController(
@@ -110,6 +276,43 @@ final class ServiceControllerTests: XCTestCase {
         await runner.waitForCallCount(2)
         await runner.releaseNext()
         try await stop
+    }
+
+    func testCancelledQueuedOperationNeverEntersRunner() async throws {
+        let runner = BlockingRunner()
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: true)
+        )
+
+        let startTask = Task {
+            try await controller.start()
+        }
+        await runner.waitForCallCount(1)
+
+        let stopTask = Task {
+            try await controller.stop()
+        }
+        await controller.waitForOperationAttemptCount(2)
+        stopTask.cancel()
+
+        do {
+            try await stopTask.value
+            XCTFail("Expected the queued stop to be cancelled")
+        } catch is CancellationError {
+            // Expected.
+        } catch {
+            XCTFail("Unexpected cancellation error: \(error)")
+        }
+
+        let queuedOperationCount = await controller.queuedOperationCount()
+        let commands = await runner.recordedCommands()
+        XCTAssertEqual(queuedOperationCount, 0)
+        XCTAssertEqual(commands, [ServiceConfiguration.test.startCommand])
+
+        await runner.releaseNext()
+        try await startTask.value
     }
 }
 
@@ -146,10 +349,38 @@ final class SystemCommandRunnerTests: XCTestCase {
         XCTAssertEqual(result.exitCode, -1)
         XCTAssertFalse(result.output.isEmpty)
     }
+
+    func testTimeoutTerminatesLaunchedProcess() async {
+        let clock = ContinuousClock()
+        let start = clock.now
+
+        let result = await SystemCommandRunner(timeout: .milliseconds(50)).run(
+            LaunchCommand(executable: "/bin/sleep", arguments: ["5"])
+        )
+
+        XCTAssertEqual(result.exitCode, -3)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("timed out"))
+        XCTAssertLessThan(start.duration(to: clock.now), .seconds(1))
+    }
+
+    func testCancellationTerminatesLaunchedProcess() async {
+        let runner = SystemCommandRunner(timeout: .seconds(5))
+        let task = Task {
+            await runner.run(LaunchCommand(executable: "/bin/sleep", arguments: ["5"]))
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        task.cancel()
+        let result = await task.value
+
+        XCTAssertEqual(result.exitCode, -2)
+        XCTAssertTrue(result.output.localizedCaseInsensitiveContains("cancelled"))
+    }
 }
 
 private actor FakeRunner: CommandRunning {
     private let printExitCode: Int32
+    private let printOutput: String
     private let startExitCode: Int32
     private let stopExitCode: Int32
     private let startOutput: String
@@ -158,12 +389,14 @@ private actor FakeRunner: CommandRunning {
 
     init(
         printExitCode: Int32,
+        printOutput: String? = nil,
         startExitCode: Int32 = 0,
         stopExitCode: Int32 = 0,
         startOutput: String = "",
         stopOutput: String = ""
     ) {
         self.printExitCode = printExitCode
+        self.printOutput = printOutput ?? Self.defaultPrintOutput(for: printExitCode)
         self.startExitCode = startExitCode
         self.stopExitCode = stopExitCode
         self.startOutput = startOutput
@@ -174,7 +407,7 @@ private actor FakeRunner: CommandRunning {
         commands.append(command)
 
         if command == ServiceConfiguration.test.printCommand {
-            return CommandResult(exitCode: printExitCode, output: "")
+            return CommandResult(exitCode: printExitCode, output: printOutput)
         }
         if command == ServiceConfiguration.test.startCommand {
             return CommandResult(exitCode: startExitCode, output: startOutput)
@@ -184,6 +417,21 @@ private actor FakeRunner: CommandRunning {
 
     func lastCommand() -> LaunchCommand? {
         commands.last
+    }
+
+    private static func defaultPrintOutput(for exitCode: Int32) -> String {
+        if exitCode == 0 {
+            return """
+            gui/501/com.local.qwythos-9b = {
+                state = running
+            }
+            """
+        }
+
+        return """
+        Bad request.
+        Could not find service "com.local.qwythos-9b" in domain for user gui: 501
+        """
     }
 }
 
@@ -196,6 +444,14 @@ private actor FakeHealthChecker: HealthChecking {
 
     func isHealthy(_ url: URL) async -> Bool {
         result
+    }
+}
+
+private struct FakeFileChecker: FileExistenceChecking {
+    let exists: Bool
+
+    func fileExists(atPath path: String) -> Bool {
+        exists
     }
 }
 

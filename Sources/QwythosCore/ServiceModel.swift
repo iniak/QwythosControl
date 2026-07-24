@@ -3,17 +3,48 @@ import Foundation
 public enum ServiceState: Equatable, Sendable {
     case stopped
     case starting
+    case stopping
     case running
     case failed(String)
 
     public static func resolve(
         jobLoaded: Bool,
         healthOK: Bool,
-        lastError: String?
+        lastError _: String?
     ) -> ServiceState {
-        if let lastError { return .failed(lastError) }
+        resolve(jobLoaded: jobLoaded, healthOK: healthOK)
+    }
+
+    public static func resolve(
+        jobLoaded: Bool,
+        healthOK: Bool
+    ) -> ServiceState {
         if healthOK { return .running }
         return jobLoaded ? .starting : .stopped
+    }
+}
+
+public enum ServiceAction: Equatable, Sendable {
+    case start
+    case stop
+
+    public var inProgressState: ServiceState {
+        switch self {
+        case .start:
+            return .starting
+        case .stop:
+            return .stopping
+        }
+    }
+}
+
+public struct ServiceSnapshot: Equatable, Sendable {
+    public let state: ServiceState
+    public let availableAction: ServiceAction?
+
+    public init(state: ServiceState, availableAction: ServiceAction?) {
+        self.state = state
+        self.availableAction = availableAction
     }
 }
 

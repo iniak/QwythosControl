@@ -14,6 +14,12 @@ final class LiveServiceControllerTests: XCTestCase {
             runner: SystemCommandRunner(),
             healthChecker: URLSessionHealthChecker()
         )
+        let initialState = await controller.refresh()
+        guard initialState == .running else {
+            throw XCTSkip(
+                "The live cycle requires an initially running service and will not change \(initialState)."
+            )
+        }
 
         addTeardownBlock {
             let restoredState = await Self.restoreServiceIfNeeded(configuration: configuration)

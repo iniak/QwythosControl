@@ -18,6 +18,18 @@ public protocol HealthChecking: Sendable {
     func isHealthy(_ url: URL) async -> Bool
 }
 
+public protocol FileExistenceChecking: Sendable {
+    func fileExists(atPath path: String) -> Bool
+}
+
+public struct LocalFileExistenceChecker: FileExistenceChecking {
+    public init() {}
+
+    public func fileExists(atPath path: String) -> Bool {
+        FileManager.default.fileExists(atPath: path)
+    }
+}
+
 public enum ServiceControlError: LocalizedError, Sendable {
     case commandFailed(String)
 
@@ -29,9 +41,15 @@ public enum ServiceControlError: LocalizedError, Sendable {
     }
 }
 
+private enum ProcessInterruption: Sendable {
+    case cancelled
+    case timedOut
+}
+
 private enum ProcessRunOutcome: Sendable {
     case terminated(Int32)
     case launchFailed(String)
+    case interrupted(ProcessInterruption)
 }
 
 private final class ProcessRunContinuationGate: @unchecked Sendable {
@@ -53,10 +71,84 @@ private final class ProcessRunContinuationGate: @unchecked Sendable {
     }
 }
 
+private final class ProcessRunCoordinator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var interruption: ProcessInterruption?
+    private var completed = false
+
+    func launch(_ process: Process) -> ProcessRunOutcome? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let interruption {
+            completed = true
+            return .interrupted(interruption)
+        }
+
+        self.process = process
+
+        do {
+            try process.run()
+            return nil
+        } catch {
+            self.process = nil
+            completed = true
+            return .launchFailed(error.localizedDescription)
+        }
+    }
+
+    func requestInterruption(_ reason: ProcessInterruption) {
+        lock.lock()
+        guard !completed, interruption == nil else {
+            lock.unlock()
+            return
+        }
+
+        interruption = reason
+        let process = process
+        lock.unlock()
+
+        if let process, process.isRunning {
+            process.terminate()
+        }
+    }
+
+    func didTerminate(exitCode: Int32) -> ProcessRunOutcome {
+        lock.lock()
+        defer { lock.unlock() }
+
+        completed = true
+        process = nil
+
+        if let interruption {
+            return .interrupted(interruption)
+        }
+        return .terminated(exitCode)
+    }
+}
+
 public struct SystemCommandRunner: CommandRunning {
-    public init() {}
+    private let timeout: Duration
+
+    public init(timeout: Duration = .seconds(2)) {
+        self.timeout = timeout
+    }
 
     public func run(_ command: LaunchCommand) async -> CommandResult {
+        let coordinator = ProcessRunCoordinator()
+
+        return await withTaskCancellationHandler {
+            await run(command, coordinator: coordinator)
+        } onCancel: {
+            coordinator.requestInterruption(.cancelled)
+        }
+    }
+
+    private func run(
+        _ command: LaunchCommand,
+        coordinator: ProcessRunCoordinator
+    ) async -> CommandResult {
         let process = Process()
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: command.executable)
@@ -68,22 +160,32 @@ public struct SystemCommandRunner: CommandRunning {
         let outputTask = Task.detached {
             pipe.fileHandleForReading.readDataToEndOfFile()
         }
+        let timeoutTask = Task {
+            do {
+                try await Task.sleep(for: timeout)
+                coordinator.requestInterruption(.timedOut)
+            } catch {
+                // The process completed before its deadline.
+            }
+        }
+        defer { timeoutTask.cancel() }
+
         let outcome: ProcessRunOutcome = await withCheckedContinuation { continuation in
             process.terminationHandler = { terminatedProcess in
                 continuationGate.resume(
                     continuation,
-                    returning: .terminated(terminatedProcess.terminationStatus)
+                    returning: coordinator.didTerminate(
+                        exitCode: terminatedProcess.terminationStatus
+                    )
                 )
             }
 
-            do {
-                try process.run()
-            } catch {
+            if let immediateOutcome = coordinator.launch(process) {
                 process.terminationHandler = nil
                 try? pipe.fileHandleForWriting.close()
                 continuationGate.resume(
                     continuation,
-                    returning: .launchFailed(error.localizedDescription)
+                    returning: immediateOutcome
                 )
             }
         }
@@ -97,27 +199,86 @@ public struct SystemCommandRunner: CommandRunning {
             )
         case .launchFailed(let message):
             return CommandResult(exitCode: -1, output: message)
+        case .interrupted(let interruption):
+            let processOutput = String(decoding: data, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let message: String
+            let exitCode: Int32
+
+            switch interruption {
+            case .cancelled:
+                message = "Command cancelled."
+                exitCode = -2
+            case .timedOut:
+                message = "Command timed out."
+                exitCode = -3
+            }
+
+            let output = processOutput.isEmpty ? message : "\(processOutput)\n\(message)"
+            return CommandResult(exitCode: exitCode, output: output)
         }
     }
 }
 
 public struct URLSessionHealthChecker: HealthChecking {
-    public init() {}
+    private struct HealthResponse: Decodable {
+        let status: String
+    }
 
-    public func isHealthy(_ url: URL) async -> Bool {
+    private let session: URLSession
+    private let timeout: Duration
+
+    public init() {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 2
-        let session = URLSession(configuration: configuration)
+        configuration.timeoutIntervalForResource = 2
+        self.session = URLSession(configuration: configuration)
+        self.timeout = .seconds(2)
+    }
 
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+    init(session: URLSession, timeout: Duration) {
+        self.session = session
+        self.timeout = timeout
+    }
+
+    public func isHealthy(_ url: URL) async -> Bool {
+        let requestTask = Task {
+            try await session.data(from: url)
+        }
+        let timeoutTask = Task {
+            do {
+                try await Task.sleep(for: timeout)
+                requestTask.cancel()
+            } catch {
+                // The request completed before its deadline.
+            }
+        }
+
+        return await withTaskCancellationHandler {
+            defer { timeoutTask.cancel() }
+
+            do {
+                let (data, response) = try await requestTask.value
+                guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
+                    return false
+                }
+                return Self.isHealthyResponse(statusCode: statusCode, data: data)
+            } catch {
                 return false
             }
-            return String(decoding: data, as: UTF8.self).contains("\"status\":\"ok\"")
-        } catch {
+        } onCancel: {
+            requestTask.cancel()
+        }
+    }
+
+    static func isHealthyResponse(statusCode: Int, data: Data) -> Bool {
+        guard statusCode == 200,
+              let response = try? JSONDecoder().decode(HealthResponse.self, from: data)
+        else {
             return false
         }
+
+        return response.status == "ok"
     }
 }
 
@@ -127,62 +288,98 @@ public actor ServiceController {
         let continuation: CheckedContinuation<Void, Never>
     }
 
+    private struct OperationWaiter {
+        let id: UUID
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+
     public let configuration: ServiceConfiguration
     private let runner: any CommandRunning
     private let healthChecker: any HealthChecking
-    private var lastError: String?
+    private let fileChecker: any FileExistenceChecking
     private var operationInProgress = false
-    private var operationWaiters: [CheckedContinuation<Void, Never>] = []
+    private var operationWaiters: [OperationWaiter] = []
     private var operationAttemptCount = 0
     private var attemptWaiters: [AttemptWaiter] = []
 
     public init(
         configuration: ServiceConfiguration,
         runner: any CommandRunning,
-        healthChecker: any HealthChecking
+        healthChecker: any HealthChecking,
+        fileChecker: any FileExistenceChecking = LocalFileExistenceChecker()
     ) {
         self.configuration = configuration
         self.runner = runner
         self.healthChecker = healthChecker
+        self.fileChecker = fileChecker
     }
 
     public func refresh() async -> ServiceState {
-        await beginOperation()
+        await refreshSnapshot().state
+    }
+
+    public func refreshSnapshot() async -> ServiceSnapshot {
+        guard await beginOperation() else {
+            return ServiceSnapshot(
+                state: .failed("Status refresh was cancelled."),
+                availableAction: nil
+            )
+        }
         defer { endOperation() }
 
         let result = await runner.run(configuration.printCommand)
-        let loaded = result.exitCode == 0
-        let healthy: Bool
+        let queryOutcome = LaunchctlPrintParser.parse(result)
 
-        if loaded {
-            healthy = await healthChecker.isHealthy(configuration.healthURL)
-        } else {
-            healthy = false
+        switch queryOutcome {
+        case .absent:
+            guard fileChecker.fileExists(atPath: configuration.plistPath) else {
+                return ServiceSnapshot(
+                    state: .failed(
+                        "Model LaunchAgent plist is missing at \(configuration.plistPath). Restore it before starting the service."
+                    ),
+                    availableAction: nil
+                )
+            }
+            return ServiceSnapshot(state: .stopped, availableAction: .start)
+        case .loaded:
+            return ServiceSnapshot(state: .starting, availableAction: .stop)
+        case .running:
+            let healthy = await healthChecker.isHealthy(configuration.healthURL)
+            return ServiceSnapshot(
+                state: healthy ? .running : .starting,
+                availableAction: .stop
+            )
+        case .failedLoaded(let message):
+            return ServiceSnapshot(state: .failed(message), availableAction: .stop)
+        case .queryFailed(let message):
+            return ServiceSnapshot(state: .failed(message), availableAction: nil)
         }
-
-        return .resolve(jobLoaded: loaded, healthOK: healthy, lastError: lastError)
     }
 
     public func start() async throws {
-        await beginOperation()
+        guard await beginOperation() else {
+            throw CancellationError()
+        }
         defer { endOperation() }
 
-        lastError = nil
+        try Task.checkCancellation()
         let result = await runner.run(configuration.startCommand)
+        try Task.checkCancellation()
         guard result.exitCode == 0 else {
-            lastError = result.output
             throw ServiceControlError.commandFailed(result.output)
         }
     }
 
     public func stop() async throws {
-        await beginOperation()
+        guard await beginOperation() else {
+            throw CancellationError()
+        }
         defer { endOperation() }
 
-        lastError = nil
+        try Task.checkCancellation()
         let result = await runner.run(configuration.stopCommand)
+        try Task.checkCancellation()
         guard result.exitCode == 0 else {
-            lastError = result.output
             throw ServiceControlError.commandFailed(result.output)
         }
     }
@@ -201,18 +398,37 @@ public actor ServiceController {
         operationWaiters.count
     }
 
-    private func beginOperation() async {
+    private func beginOperation() async -> Bool {
         operationAttemptCount += 1
         resumeSatisfiedAttemptWaiters()
 
-        guard operationInProgress else {
-            operationInProgress = true
-            return
+        guard !Task.isCancelled else {
+            return false
         }
 
-        await withCheckedContinuation { continuation in
-            operationWaiters.append(continuation)
+        guard operationInProgress else {
+            operationInProgress = true
+            return true
         }
+
+        let waiterID = UUID()
+        let admitted = await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                operationWaiters.append(
+                    OperationWaiter(id: waiterID, continuation: continuation)
+                )
+            }
+        } onCancel: {
+            Task {
+                await self.cancelQueuedOperation(id: waiterID)
+            }
+        }
+
+        if admitted, Task.isCancelled {
+            endOperation()
+            return false
+        }
+        return admitted
     }
 
     private func endOperation() {
@@ -221,7 +437,16 @@ public actor ServiceController {
             return
         }
 
-        operationWaiters.removeFirst().resume()
+        operationWaiters.removeFirst().continuation.resume(returning: true)
+    }
+
+    private func cancelQueuedOperation(id: UUID) {
+        guard let index = operationWaiters.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let waiter = operationWaiters.remove(at: index)
+        waiter.continuation.resume(returning: false)
     }
 
     private func resumeSatisfiedAttemptWaiters() {

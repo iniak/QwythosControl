@@ -12,7 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let statusTextItem = NSMenuItem(title: "Status: Checking...", action: nil, keyEquivalent: "")
     private let toggleItem = NSMenuItem(title: "Model Service", action: #selector(toggleService), keyEquivalent: "")
-    private var currentState = ServiceState.stopped
+    private var currentSnapshot = ServiceSnapshot(
+        state: .stopped,
+        availableAction: nil
+    )
     private var operationInProgress = false
     private var refreshTask: Task<Void, Never>?
 
@@ -39,12 +42,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installMenu()
 
         refreshTask = Task { [weak self] in
+            let clock = ContinuousClock()
+            var schedule = FixedPollingSchedule(
+                startingAt: clock.now,
+                interval: .seconds(3)
+            )
+
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.refresh()
 
+                let nextDeadline = schedule.nextDeadline(after: clock.now)
+
                 do {
-                    try await Task.sleep(for: .seconds(3))
+                    try await clock.sleep(
+                        until: nextDeadline,
+                        tolerance: .milliseconds(50)
+                    )
                 } catch {
                     return
                 }
@@ -105,30 +119,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func refresh() async {
-        let state = await controller.refresh()
+        let snapshot = await controller.refreshSnapshot()
         guard !operationInProgress else { return }
 
-        currentState = state
-        render(state)
+        currentSnapshot = snapshot
+        render(snapshot)
     }
 
     @objc private func toggleService() {
-        guard !operationInProgress else { return }
+        guard !operationInProgress,
+              let action = currentSnapshot.availableAction
+        else {
+            return
+        }
 
-        let stateToToggle = currentState
         operationInProgress = true
-        render(.starting)
+        render(
+            ServiceSnapshot(
+                state: action.inProgressState,
+                availableAction: action
+            )
+        )
 
         Task { [weak self] in
             guard let self else { return }
             var failureMessage: String?
 
             do {
-                switch stateToToggle {
-                case .running, .starting:
-                    try await controller.stop()
-                case .stopped, .failed:
+                switch action {
+                case .start:
                     try await controller.start()
+                case .stop:
+                    try await controller.stop()
                 }
             } catch {
                 failureMessage = error.localizedDescription
@@ -157,29 +179,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    private func render(_ state: ServiceState) {
-        let presentation: (text: String, accessibilityStatus: String, color: NSColor, checked: Bool)
+    private func render(_ snapshot: ServiceSnapshot) {
+        let presentation: (text: String, accessibilityStatus: String, color: NSColor)
 
-        switch state {
+        switch snapshot.state {
         case .stopped:
-            presentation = ("Status: Stopped", "Stopped", .systemGray, false)
+            presentation = ("Status: Stopped", "Stopped", .systemGray)
         case .starting:
-            presentation = ("Status: Starting...", "Starting", .systemYellow, false)
+            presentation = ("Status: Starting...", "Starting", .systemYellow)
+        case .stopping:
+            presentation = ("Status: Stopping...", "Stopping", .systemYellow)
         case .running:
-            presentation = ("Status: Running", "Running", .systemGreen, true)
+            presentation = ("Status: Running", "Running", .systemGreen)
         case .failed(let message):
             let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
             presentation = (
                 detail.isEmpty ? "Status: Failed" : "Status: Failed - \(detail)",
                 "Failed",
-                .systemRed,
-                false
+                .systemRed
             )
         }
 
         statusTextItem.title = presentation.text
-        toggleItem.state = presentation.checked ? .on : .off
-        toggleItem.isEnabled = !operationInProgress
+        toggleItem.state = snapshot.availableAction == .stop ? .on : .off
+        toggleItem.isEnabled = !operationInProgress && snapshot.availableAction != nil
         let accessibilityDescription = "Qwythos service status: \(presentation.accessibilityStatus)"
         statusItem?.button?.image = statusImage(
             color: presentation.color,

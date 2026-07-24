@@ -6,7 +6,13 @@ final class ServiceModelTests: XCTestCase {
         XCTAssertEqual(ServiceState.resolve(jobLoaded: false, healthOK: false, lastError: nil), .stopped)
         XCTAssertEqual(ServiceState.resolve(jobLoaded: true, healthOK: false, lastError: nil), .starting)
         XCTAssertEqual(ServiceState.resolve(jobLoaded: true, healthOK: true, lastError: nil), .running)
-        XCTAssertEqual(ServiceState.resolve(jobLoaded: false, healthOK: false, lastError: "boom"), .failed("boom"))
+        XCTAssertEqual(ServiceState.resolve(jobLoaded: false, healthOK: false, lastError: "boom"), .stopped)
+        XCTAssertEqual(ServiceState.resolve(jobLoaded: true, healthOK: true, lastError: "old error"), .running)
+    }
+
+    func testServiceActionsExposeOperationSpecificProgressState() {
+        XCTAssertEqual(ServiceAction.start.inProgressState, .starting)
+        XCTAssertEqual(ServiceAction.stop.inProgressState, .stopping)
     }
 
     func testLaunchCommandsUseCurrentUserDomain() {
