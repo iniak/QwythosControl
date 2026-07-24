@@ -84,6 +84,8 @@ public actor ServiceController {
     private let runner: any CommandRunning
     private let healthChecker: any HealthChecking
     private var lastError: String?
+    private var operationInProgress = false
+    private var operationWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(
         configuration: ServiceConfiguration,
@@ -96,6 +98,9 @@ public actor ServiceController {
     }
 
     public func refresh() async -> ServiceState {
+        await beginOperation()
+        defer { endOperation() }
+
         let result = await runner.run(configuration.printCommand)
         let loaded = result.exitCode == 0
         let healthy: Bool
@@ -110,6 +115,9 @@ public actor ServiceController {
     }
 
     public func start() async throws {
+        await beginOperation()
+        defer { endOperation() }
+
         lastError = nil
         let result = await runner.run(configuration.startCommand)
         guard result.exitCode == 0 else {
@@ -119,11 +127,34 @@ public actor ServiceController {
     }
 
     public func stop() async throws {
+        await beginOperation()
+        defer { endOperation() }
+
         lastError = nil
         let result = await runner.run(configuration.stopCommand)
         guard result.exitCode == 0 else {
             lastError = result.output
             throw ServiceControlError.commandFailed(result.output)
         }
+    }
+
+    private func beginOperation() async {
+        guard operationInProgress else {
+            operationInProgress = true
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            operationWaiters.append(continuation)
+        }
+    }
+
+    private func endOperation() {
+        guard !operationWaiters.isEmpty else {
+            operationInProgress = false
+            return
+        }
+
+        operationWaiters.removeFirst().resume()
     }
 }

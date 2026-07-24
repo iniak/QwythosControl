@@ -85,6 +85,32 @@ final class ServiceControllerTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+
+    func testOperationsDoNotEnterRunnerConcurrently() async throws {
+        let runner = BlockingRunner()
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: true)
+        )
+
+        async let start: Void = controller.start()
+        await runner.waitForCallCount(1)
+
+        async let stop: Void = controller.stop()
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+
+        let commandsBeforeStartCompletes = await runner.recordedCommands()
+        XCTAssertEqual(commandsBeforeStartCompletes, [ServiceConfiguration.test.startCommand])
+
+        await runner.releaseNext()
+        try await start
+        await runner.waitForCallCount(2)
+        await runner.releaseNext()
+        try await stop
+    }
 }
 
 private actor FakeRunner: CommandRunning {
@@ -135,6 +161,54 @@ private actor FakeHealthChecker: HealthChecking {
 
     func isHealthy(_ url: URL) async -> Bool {
         result
+    }
+}
+
+private actor BlockingRunner: CommandRunning {
+    private struct CallWaiter {
+        let count: Int
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    private var commands: [LaunchCommand] = []
+    private var blockedCalls: [CheckedContinuation<Void, Never>] = []
+    private var callWaiters: [CallWaiter] = []
+
+    func run(_ command: LaunchCommand) async -> CommandResult {
+        commands.append(command)
+        resumeSatisfiedCallWaiters()
+
+        await withCheckedContinuation { continuation in
+            blockedCalls.append(continuation)
+        }
+
+        return CommandResult(exitCode: 0, output: "")
+    }
+
+    func waitForCallCount(_ count: Int) async {
+        guard commands.count < count else {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            callWaiters.append(CallWaiter(count: count, continuation: continuation))
+        }
+    }
+
+    func recordedCommands() -> [LaunchCommand] {
+        commands
+    }
+
+    func releaseNext() {
+        blockedCalls.removeFirst().resume()
+    }
+
+    private func resumeSatisfiedCallWaiters() {
+        let satisfied = callWaiters.filter { $0.count <= commands.count }
+        callWaiters.removeAll { $0.count <= commands.count }
+        for waiter in satisfied {
+            waiter.continuation.resume()
+        }
     }
 }
 
