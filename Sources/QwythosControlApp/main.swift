@@ -60,8 +60,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
 
-        item.button?.image = statusImage(color: .systemGray)
-        item.button?.toolTip = "Qwythos Control Center"
+        let initialAccessibilityDescription = "Qwythos service status: Checking"
+        item.button?.image = statusImage(
+            color: .systemGray,
+            accessibilityDescription: initialAccessibilityDescription
+        )
+        item.button?.setAccessibilityLabel(initialAccessibilityDescription)
+        item.button?.toolTip = initialAccessibilityDescription
 
         statusTextItem.isEnabled = false
         toggleItem.isEnabled = false
@@ -101,6 +106,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refresh() async {
         let state = await controller.refresh()
+        guard !operationInProgress else { return }
+
         currentState = state
         render(state)
     }
@@ -151,19 +158,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func render(_ state: ServiceState) {
-        let presentation: (text: String, color: NSColor, checked: Bool)
+        let presentation: (text: String, accessibilityStatus: String, color: NSColor, checked: Bool)
 
         switch state {
         case .stopped:
-            presentation = ("Status: Stopped", .systemGray, false)
+            presentation = ("Status: Stopped", "Stopped", .systemGray, false)
         case .starting:
-            presentation = ("Status: Starting...", .systemYellow, false)
+            presentation = ("Status: Starting...", "Starting", .systemYellow, false)
         case .running:
-            presentation = ("Status: Running", .systemGreen, true)
+            presentation = ("Status: Running", "Running", .systemGreen, true)
         case .failed(let message):
             let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
             presentation = (
                 detail.isEmpty ? "Status: Failed" : "Status: Failed - \(detail)",
+                "Failed",
                 .systemRed,
                 false
             )
@@ -172,14 +180,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusTextItem.title = presentation.text
         toggleItem.state = presentation.checked ? .on : .off
         toggleItem.isEnabled = !operationInProgress
-        statusItem?.button?.image = statusImage(color: presentation.color)
+        let accessibilityDescription = "Qwythos service status: \(presentation.accessibilityStatus)"
+        statusItem?.button?.image = statusImage(
+            color: presentation.color,
+            accessibilityDescription: accessibilityDescription
+        )
+        statusItem?.button?.setAccessibilityLabel(accessibilityDescription)
+        statusItem?.button?.toolTip = accessibilityDescription
     }
 
-    private func statusImage(color: NSColor) -> NSImage? {
+    private func statusImage(color: NSColor, accessibilityDescription: String) -> NSImage? {
         let configuration = NSImage.SymbolConfiguration(hierarchicalColor: color)
         return NSImage(
             systemSymbolName: "circle.fill",
-            accessibilityDescription: "Qwythos service status"
+            accessibilityDescription: accessibilityDescription
         )?.withSymbolConfiguration(configuration)
     }
 
