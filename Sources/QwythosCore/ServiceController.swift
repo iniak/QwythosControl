@@ -379,9 +379,18 @@ public actor ServiceController {
         try Task.checkCancellation()
         let result = await runner.run(configuration.stopCommand)
         try Task.checkCancellation()
+        if isAlreadyAbsentBootout(result) {
+            return
+        }
         guard result.exitCode == 0 else {
             throw ServiceControlError.commandFailed(result.output)
         }
+    }
+
+    private func isAlreadyAbsentBootout(_ result: CommandResult) -> Bool {
+        result.exitCode == 3
+            && result.output.hasPrefix("Could not find service ")
+            && result.output.contains(" in domain for user gui: ")
     }
 
     func waitForOperationAttemptCount(_ count: Int) async {
