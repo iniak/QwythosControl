@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "version": "b10159",
+    "archive": {
+      "filename": "llama-b10159-bin-macos-arm64.tar.gz",
+      "sourceURL": "https://github.com/ggml-org/llama.cpp/releases/download/b10159/llama-b10159-bin-macos-arm64.tar.gz",
+      "size": 10896813,
+      "sha256": "fa8710855b9432ed0df1917f3beba2ec68d6b57bbd45f4234bf33e6afa0c311c"
+    },
+    "directoryName": "llama-b10159",
+    "serverRelativePath": "llama-server"
+  },
+  "model": {
+    "filename": "Qwythos-9B-Claude-Mythos-5-1M-uncensored-heretic-Q4_K_M.gguf",
+    "sourceURL": "https://huggingface.co/llmfan46/Qwythos-9B-Claude-Mythos-5-1M-uncensored-heretic-GGUF/resolve/5a91ab33c680ecfbd6731810bba2c068cb8427df/Qwythos-9B-Claude-Mythos-5-1M-uncensored-heretic-Q4_K_M.gguf",
+    "size": 6216967936,
+    "sha256": "1ee1cd89574b1b2e57447d6dab8328a6c39b20d18557a322d928215a8a8a96de"
+  },
+  "service": {
+    "label": "com.local.qwythos-9b",
+    "port": 18080
+  }
+}

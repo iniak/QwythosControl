@@ -197,6 +197,35 @@ final class ServiceControllerTests: XCTestCase {
         }
     }
 
+    func testStopTreatsAbsentLaunchctlServiceAsAlreadyStopped() async throws {
+        let runner = FakeRunner(
+            printExitCode: 0,
+            stopExitCode: 3,
+            stopOutput: "Could not find service \"com.local.qwythos-9b\" in domain for user gui: 501"
+        )
+        let controller = ServiceController(
+            configuration: .test,
+            runner: runner,
+            healthChecker: FakeHealthChecker(result: false)
+        )
+
+        try await controller.stop()
+    }
+
+    func testStopDoesNotTreatMisleadingNotFoundSubstringAsAbsent() async {
+        let runner = FakeRunner(printExitCode: 0, stopExitCode: 1, stopOutput: "service not found while bootout failed")
+        let controller = ServiceController(configuration: .test, runner: runner, healthChecker: FakeHealthChecker(result: false))
+
+        do {
+            try await controller.stop()
+            XCTFail("Only the canonical launchctl missing-service result is idempotent")
+        } catch let error as ServiceControlError {
+            XCTAssertEqual(error.localizedDescription, "service not found while bootout failed")
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testFailedStopDoesNotOverrideSubsequentRunningObservation() async {
         let runner = FakeRunner(
             printExitCode: 0,
