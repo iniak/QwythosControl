@@ -1,5 +1,7 @@
 # Qwythos Control
 
+[简体中文](README.zh-CN.md)
+
 Qwythos Control is a macOS menu-bar app for deploying and managing the local
 Qwythos 9B model service. A release build with deployment resources can perform
 the complete install from its native wizard. It does not require Homebrew,
