@@ -105,7 +105,7 @@ Tests/QwythosControlAppTests/
   `ServiceDefaults`, and `InstallationLayout`.
 - Consumed by: every later deployment task.
 
-- [ ] **Step 1: Add failing manifest tests**
+- [x] **Step 1: Add failing manifest tests**
 
 ```swift
 final class DeploymentManifestTests: XCTestCase {
@@ -128,7 +128,7 @@ final class DeploymentManifestTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Add failing layout containment tests**
+- [x] **Step 2: Add failing layout containment tests**
 
 ```swift
 final class InstallationLayoutTests: XCTestCase {
@@ -147,7 +147,7 @@ final class InstallationLayoutTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 3: Run the new target tests and verify compilation fails**
+- [x] **Step 3: Run the new target tests and verify compilation fails**
 
 Run:
 
@@ -157,7 +157,7 @@ swift test --filter 'DeploymentManifestTests|InstallationLayoutTests'
 
 Expected: failure because `QwythosDeployment` and its types do not exist.
 
-- [ ] **Step 4: Add the SwiftPM targets and resources**
+- [x] **Step 4: Add the SwiftPM targets and resources**
 
 Add:
 
@@ -181,7 +181,7 @@ Add target definitions:
 
 Add `QwythosDeployment` to the executable target dependencies.
 
-- [ ] **Step 5: Implement exact manifest models**
+- [x] **Step 5: Implement exact manifest models**
 
 Define:
 
@@ -230,12 +230,12 @@ public struct ServiceDefaults: Codable, Equatable, Sendable {
 Use `ManifestError.missingResource`, `ManifestError.unsupportedSchema(Int)`, and
 `ManifestError.invalidSHA256(String)` for fail-closed validation.
 
-- [ ] **Step 6: Add the pinned JSON resource**
+- [x] **Step 6: Add the pinned JSON resource**
 
 Use exactly the release, URLs, sizes, SHA-256 values, service label, and port
 from `docs/superpowers/specs/2026-07-29-one-click-deployment-design.md`.
 
-- [ ] **Step 7: Implement the layout**
+- [x] **Step 7: Implement the layout**
 
 `InstallationLayout` must expose all directories from the design plus:
 
@@ -253,7 +253,7 @@ public func requireManaged(_ url: URL) throws -> URL
 Containment must compare standardized file paths and reject the root itself for
 destructive operations.
 
-- [ ] **Step 8: Implement persistent root discovery**
+- [x] **Step 8: Implement persistent root discovery**
 
 ```swift
 public struct InstallationLocation: Codable, Equatable, Sendable {
@@ -273,7 +273,7 @@ Add a test that saves a custom-volume root, recreates the locator, and loads the
 same standardized URL. Add a missing-volume test that preserves the locator and
 returns the unavailable root for inspection.
 
-- [ ] **Step 9: Run tests**
+- [x] **Step 9: Run tests**
 
 Run:
 
@@ -283,7 +283,7 @@ swift test --filter 'DeploymentManifestTests|InstallationLayoutTests'
 
 Expected: all selected tests pass.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add Package.swift Sources/QwythosDeployment Tests/QwythosDeploymentTests
@@ -304,7 +304,7 @@ git commit -m "feat: add deployment manifest and layout"
   `PreflightReport`, and `PerformanceProfile`.
 - Consumed by: `DeploymentCoordinator` and the device-check wizard step.
 
-- [ ] **Step 1: Write failing profile tests**
+- [x] **Step 1: Write failing profile tests**
 
 ```swift
 func testAutomaticContextUsesMemoryThresholds() throws {
@@ -324,7 +324,7 @@ func testAutomaticContextUsesMemoryThresholds() throws {
 }
 ```
 
-- [ ] **Step 2: Write failing preflight tests**
+- [x] **Step 2: Write failing preflight tests**
 
 Use `FakeSystemProfile` and `FakePortChecker` to verify:
 
@@ -352,7 +352,7 @@ func testPreflightRejectsIntelAndInsufficientStorage() async {
 }
 ```
 
-- [ ] **Step 3: Verify tests fail**
+- [x] **Step 3: Verify tests fail**
 
 Run:
 
@@ -362,7 +362,7 @@ swift test --filter DeploymentPreflightTests
 
 Expected: compilation failure for missing preflight types.
 
-- [ ] **Step 4: Implement injectable system interfaces**
+- [x] **Step 4: Implement injectable system interfaces**
 
 ```swift
 public protocol SystemProfileProviding: Sendable {
@@ -383,7 +383,7 @@ Production architecture uses `uname`, memory uses
 `URLResourceKey.volumeAvailableCapacityForImportantUsageKey`, and the port
 checker attempts a loopback bind with `Network.NWListener`.
 
-- [ ] **Step 5: Implement exact preflight rules**
+- [x] **Step 5: Implement exact preflight rules**
 
 `PreflightReport` must retain individual checks and calculate `canDeploy`.
 Require:
@@ -396,7 +396,7 @@ Require:
 - port is available, unless the inspector later identifies the recognized
   Qwythos service as its owner
 
-- [ ] **Step 6: Run tests and commit**
+- [x] **Step 6: Run tests and commit**
 
 ```bash
 swift test --filter DeploymentPreflightTests
@@ -422,7 +422,7 @@ git commit -m "feat: add deployment preflight checks"
   `ResumableDownloader`, and `DownloadProgress`.
 - Consumed by: runtime/model installation, repair, migration, and coordinator.
 
-- [ ] **Step 1: Write the failing streaming hash test**
+- [x] **Step 1: Write the failing streaming hash test**
 
 ```swift
 func testHashesFileWithoutLoadingWholeFile() throws {
@@ -438,7 +438,7 @@ func testHashesFileWithoutLoadingWholeFile() throws {
 }
 ```
 
-- [ ] **Step 2: Write failing range-download tests**
+- [x] **Step 2: Write failing range-download tests**
 
 Start `RangeHTTPServer` on loopback with a deterministic payload. Verify:
 
@@ -517,13 +517,13 @@ Add separate tests for:
 - content-length mismatch
 - SHA-256 mismatch
 
-- [ ] **Step 3: Verify tests fail**
+- [x] **Step 3: Verify tests fail**
 
 ```bash
 swift test --filter 'SHA256HasherTests|ResumableDownloaderTests'
 ```
 
-- [ ] **Step 4: Implement file hashing**
+- [x] **Step 4: Implement file hashing**
 
 ```swift
 public protocol FileHashing: Sendable {
@@ -534,7 +534,7 @@ public protocol FileHashing: Sendable {
 Read with `FileHandle.read(upToCount: 1_048_576)` and incrementally update
 `CryptoKit.SHA256`.
 
-- [ ] **Step 5: Implement downloader contracts**
+- [x] **Step 5: Implement downloader contracts**
 
 ```swift
 public struct DownloadProgress: Equatable, Sendable {
@@ -556,13 +556,13 @@ public protocol ArtifactDownloading: Sendable {
 received `Data` chunks to an open file handle. Validate `200` versus `206`,
 `Content-Range`, total size, and SHA-256 before returning.
 
-- [ ] **Step 6: Implement retry and cancellation**
+- [x] **Step 6: Implement retry and cancellation**
 
 Retry only transport failures and HTTP `408`, `429`, and `5xx`, with delays of
 1, 2, and 4 seconds. Do not retry checksum, range, permission, or storage
 errors. Cancellation must call `URLSessionTask.cancel()` and close the file.
 
-- [ ] **Step 7: Run tests and commit**
+- [x] **Step 7: Run tests and commit**
 
 ```bash
 swift test --filter 'SHA256HasherTests|ResumableDownloaderTests'
@@ -591,7 +591,7 @@ git commit -m "feat: add verified resumable downloads"
   `LaunchAgentInstaller`.
 - Consumed by: coordinator, repair, migration, and management UI.
 
-- [ ] **Step 1: Write failing runtime promotion and rollback tests**
+- [x] **Step 1: Write failing runtime promotion and rollback tests**
 
 Use a tiny tar archive containing:
 
@@ -605,7 +605,7 @@ the directory into `runtime/versions/b10159`, and atomically points
 `runtime/current` at it. Add a test where validation fails and the old link is
 unchanged.
 
-- [ ] **Step 2: Write failing LaunchAgent tests**
+- [x] **Step 2: Write failing LaunchAgent tests**
 
 ```swift
 func testSharedModeBindsAllInterfacesAndRequiresKeyFile() throws {
@@ -633,13 +633,13 @@ func testSharedModeBindsAllInterfacesAndRequiresKeyFile() throws {
 
 Add a local-mode test asserting `127.0.0.1` and no `--api-key-file`.
 
-- [ ] **Step 3: Verify tests fail**
+- [x] **Step 3: Verify tests fail**
 
 ```bash
 swift test --filter 'RuntimeInstallerTests|LaunchAgentInstallerTests|LANAddressProviderTests'
 ```
 
-- [ ] **Step 4: Define deployment options**
+- [x] **Step 4: Define deployment options**
 
 ```swift
 public enum NetworkAccessMode: String, Codable, Equatable, Sendable {
@@ -684,7 +684,7 @@ public protocol LaunchAgentInstalling: Sendable {
 }
 ```
 
-- [ ] **Step 5: Implement API key storage**
+- [x] **Step 5: Implement API key storage**
 
 Generate 32 bytes with `SecRandomCopyBytes`, encode unpadded base64url, write
 one key plus a trailing newline, and set POSIX permissions to `0o600`.
@@ -701,7 +701,7 @@ public protocol APIKeyStoring: Sendable {
 
 `generate()` atomically replaces the previous key.
 
-- [ ] **Step 6: Implement LAN address discovery**
+- [x] **Step 6: Implement LAN address discovery**
 
 Use `getifaddrs` to return active, non-loopback IPv4 addresses. Exclude
 `127.0.0.0/8`, `169.254.0.0/16`, and interfaces without `IFF_UP`. Expose:
@@ -716,13 +716,13 @@ Add table-driven tests for loopback, link-local, inactive, Wi-Fi, Ethernet, and
 multiple active interfaces. Completion UI formats each result as
 `http://<address>:18080`.
 
-- [ ] **Step 7: Implement plist generation**
+- [x] **Step 7: Implement plist generation**
 
 Use `PropertyListSerialization` or `PropertyListEncoder`, never string
 templates. Include the exact model parameters from the design, stdout/stderr
 paths, `RunAtLoad`, `KeepAlive`, and `ProcessType=Interactive`.
 
-- [ ] **Step 8: Implement runtime staging**
+- [x] **Step 8: Implement runtime staging**
 
 Run `/usr/bin/tar -xzf <archive> -C <staging>` with a deployment command runner
 whose timeout is 60 seconds. Require the extracted root to equal the manifest
@@ -736,7 +736,7 @@ file <staging>/llama-b10159/llama-server
 In Swift, inspect `file` output for `arm64` and require version command exit
 code `0`.
 
-- [ ] **Step 9: Run tests and commit**
+- [x] **Step 9: Run tests and commit**
 
 ```bash
 swift test --filter 'RuntimeInstallerTests|LaunchAgentInstallerTests|LANAddressProviderTests'
@@ -761,7 +761,7 @@ git commit -m "feat: install runtime and launch agent"
   `LegacyInstallationMigrator`.
 - Consumed by: coordinator, menu integration, migration, repair, and uninstall.
 
-- [ ] **Step 1: Write failing inspector classification tests**
+- [x] **Step 1: Write failing inspector classification tests**
 
 Cover:
 
@@ -784,19 +784,19 @@ XCTAssertEqual(
 )
 ```
 
-- [ ] **Step 2: Write failing model reuse tests**
+- [x] **Step 2: Write failing model reuse tests**
 
 Create a fake Hugging Face cache blob named by the expected SHA-256. Verify the
 migrator selects it, reuses it at `layout.modelFile`, verifies the result, and
 does not delete the source. Add a mismatch test that chooses download instead.
 
-- [ ] **Step 3: Verify tests fail**
+- [x] **Step 3: Verify tests fail**
 
 ```bash
 swift test --filter 'InstallationInspectorTests|LegacyInstallationMigratorTests'
 ```
 
-- [ ] **Step 4: Define the durable installation record**
+- [x] **Step 4: Define the durable installation record**
 
 ```swift
 public struct InstallationRecord: Codable, Equatable, Sendable {
@@ -816,7 +816,7 @@ public struct InstallationRecord: Codable, Equatable, Sendable {
 `InstallationRecordStore` reads and atomically replaces the selected layout's
 `deployment.json`.
 
-- [ ] **Step 5: Implement status inspection**
+- [x] **Step 5: Implement status inspection**
 
 ```swift
 public enum RepairComponent: Hashable, Sendable {
@@ -859,7 +859,7 @@ Recognize a legacy installation only when the plist label is
 `com.local.qwythos-9b` and its program or arguments reference
 `llama-server`. Do not adopt an arbitrary plist that merely uses port `18080`.
 
-- [ ] **Step 6: Implement safe model reuse**
+- [x] **Step 6: Implement safe model reuse**
 
 Search:
 
@@ -871,13 +871,13 @@ Check the digest-named blob path first. Validate SHA-256 before reuse. Attempt
 `clonefile`, then a hard link on the same volume, then `copyItem`. Validate the
 managed result after every strategy.
 
-- [ ] **Step 7: Implement migration rollback**
+- [x] **Step 7: Implement migration rollback**
 
 Back up the plist, stop the recognized legacy service, install the managed
 runtime/configuration, and start/health-check it. On any failure, restore the
 old plist and bootstrap the old service. Never remove Homebrew or the old cache.
 
-- [ ] **Step 8: Run tests and commit**
+- [x] **Step 8: Run tests and commit**
 
 ```bash
 swift test --filter 'InstallationInspectorTests|LegacyInstallationMigratorTests'
@@ -899,7 +899,7 @@ git commit -m "feat: inspect and migrate existing installs"
   `DeploymentSnapshot` stream.
 - Consumed by: wizard model and menu integration.
 
-- [ ] **Step 1: Define failing state-sequence tests**
+- [x] **Step 1: Define failing state-sequence tests**
 
 ```swift
 func testCleanDeploymentPublishesOrderedPhasesAndRecordsOnlyAfterHealth() async throws {
@@ -1020,13 +1020,13 @@ Add tests for:
 - uninstall deletes the model only when `deleteModel` is true
 - access-mode change rewrites configuration and restarts service
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 ```bash
 swift test --filter DeploymentCoordinatorTests
 ```
 
-- [ ] **Step 3: Define state and snapshot types**
+- [x] **Step 3: Define state and snapshot types**
 
 ```swift
 public enum DeploymentPhase: String, Codable, Sendable {
@@ -1059,7 +1059,7 @@ public struct DeploymentSnapshot: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 4: Implement the public coordinator API**
+- [x] **Step 4: Implement the public coordinator API**
 
 ```swift
 public protocol DeploymentCoordinating: Sendable {
@@ -1121,20 +1121,20 @@ download so a relaunch can resume. `inspect()` and management operations load
 the root through the locator. Successful uninstall removes the locator last;
 failed uninstall preserves it.
 
-- [ ] **Step 5: Implement atomic completion and recovery**
+- [x] **Step 5: Implement atomic completion and recovery**
 
 Save `InstallationRecord` only after successful health. On runtime switch
 failure, restore the old `runtime/current` link, rewrite the old plist if
 needed, and restart the prior service. Never remove the verified model in a
 runtime error path.
 
-- [ ] **Step 6: Implement repair and uninstall scope**
+- [x] **Step 6: Implement repair and uninstall scope**
 
 Repair consumes the exact `Set<RepairComponent>` from inspection. Uninstall
 calls `InstallationLayout.requireManaged` for every deletion and never deletes
 the selected root itself.
 
-- [ ] **Step 7: Run tests and commit**
+- [x] **Step 7: Run tests and commit**
 
 ```bash
 swift test --filter DeploymentCoordinatorTests
@@ -1166,7 +1166,7 @@ git commit -m "feat: orchestrate deployment lifecycle"
 - Produces: `DeploymentWizardModel` and `DeploymentWizardWindowController`.
 - Consumed by: `AppDelegate`.
 
-- [ ] **Step 1: Write failing wizard model tests**
+- [x] **Step 1: Write failing wizard model tests**
 
 Add a test target:
 
@@ -1200,13 +1200,13 @@ Also verify automatic context selection, custom storage selection, local/shared
 mode, deployment progress rendering, delete-model confirmation, and pause on
 quit.
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 ```bash
 swift test --filter DeploymentWizardModelTests
 ```
 
-- [ ] **Step 3: Implement the main-actor model**
+- [x] **Step 3: Implement the main-actor model**
 
 ```swift
 @MainActor
@@ -1243,7 +1243,7 @@ final class DeploymentWizardModel: ObservableObject {
 Expose command-specific booleans such as `canContinue`, `canDeploy`, and
 `isBusy`; views do not derive state-machine rules independently.
 
-- [ ] **Step 4: Build the wizard shell**
+- [x] **Step 4: Build the wizard shell**
 
 Use an `NSWindow` sized `640 x 560`, an `NSHostingController`, and a stable
 toolbar-free layout. The primary screen is the actual wizard, not explanatory
@@ -1260,7 +1260,7 @@ Use:
 - destructive confirmation sheet for uninstall
 - icon buttons with tooltips for copy/reveal/regenerate API key
 
-- [ ] **Step 5: Implement every state view**
+- [x] **Step 5: Implement every state view**
 
 Each view consumes the model only. Keep display text inside the available
 window width and support light/dark appearance. LAN mode must show the API-key
@@ -1270,7 +1270,7 @@ is older than the bundled manifest and `Reinstall Runtime` when versions match.
 Runtime updates arrive through a newer signed app manifest; the app never
 installs an unlisted GitHub `latest` release.
 
-- [ ] **Step 6: Run tests and perform visual checks**
+- [x] **Step 6: Run tests and perform visual checks**
 
 ```bash
 swift test --filter DeploymentWizardModelTests
@@ -1286,7 +1286,7 @@ management attachments in light and dark appearance. Assert the rendered image
 is `640 x 560` and that every primary button frame is contained by the root
 view bounds.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add Package.swift Sources/QwythosControlApp Tests/QwythosControlAppTests
@@ -1309,7 +1309,7 @@ git commit -m "feat: add Qwythos deployment wizard"
   `InstallationStatus`.
 - Produces: the final app entry points and packaged manifest resource.
 
-- [ ] **Step 1: Add failing integration assertions**
+- [x] **Step 1: Add failing integration assertions**
 
 Test that:
 
@@ -1320,13 +1320,13 @@ Test that:
   is available
 - completing deployment refreshes the existing service controller
 
-- [ ] **Step 2: Verify integration tests fail**
+- [x] **Step 2: Verify integration tests fail**
 
 ```bash
 swift test --filter AppIntegrationTests
 ```
 
-- [ ] **Step 3: Split the app entry point**
+- [x] **Step 3: Split the app entry point**
 
 Leave `main.swift` with only:
 
@@ -1342,7 +1342,7 @@ application.run()
 
 Move the delegate implementation into `AppDelegate.swift`.
 
-- [ ] **Step 4: Add the deployment menu item**
+- [x] **Step 4: Add the deployment menu item**
 
 Insert one menu item below the status row. Its action opens the single retained
 wizard window. Refresh its title from `InstallationStatus` after launch,
@@ -1352,13 +1352,13 @@ Keep the existing model toggle, Open Chat, logs, notifications, and polling.
 When no plist exists, disable the toggle and render `Status: Not Installed`
 rather than a failure.
 
-- [ ] **Step 5: Resolve dynamic managed paths**
+- [x] **Step 5: Resolve dynamic managed paths**
 
 Routine service control keeps the fixed label, plist path, loopback health URL,
 and chat URL. `View Logs` reads the current `InstallationRecord.root` each time
 and falls back to the legacy logs directory when no managed record exists.
 
-- [ ] **Step 6: Package the SwiftPM resource bundle**
+- [x] **Step 6: Package the SwiftPM resource bundle**
 
 After `swift build -c release`, require and copy:
 
@@ -1371,7 +1371,7 @@ ditto "$DEPLOYMENT_BUNDLE" \
 
 Then sign the complete app as the existing script does.
 
-- [ ] **Step 7: Verify package contents**
+- [x] **Step 7: Verify package contents**
 
 ```bash
 scripts/build-app.sh
@@ -1380,7 +1380,7 @@ test -f \
 codesign --verify --deep --strict "build/Qwythos Control.app"
 ```
 
-- [ ] **Step 8: Run tests and commit**
+- [x] **Step 8: Run tests and commit**
 
 ```bash
 swift test
@@ -1403,7 +1403,7 @@ git commit -m "feat: integrate deployment into control center"
 - Produces: final automated acceptance coverage and user-facing deployment
   documentation.
 
-- [ ] **Step 1: Add the end-to-end fixture**
+- [x] **Step 1: Add the end-to-end fixture**
 
 Use:
 
@@ -1417,7 +1417,7 @@ Use:
 The test runs clean deploy, access-mode switch, repair, runtime reinstall, and
 uninstall without touching the real user service.
 
-- [ ] **Step 2: Assert security boundaries**
+- [x] **Step 2: Assert security boundaries**
 
 Verify:
 
@@ -1432,7 +1432,7 @@ XCTAssertTrue(allDeletedURLs.allSatisfy(layout.isManaged))
 Also assert no command invokes `sudo`, `brew`, `/bin/sh -c`, or a downloaded
 script.
 
-- [ ] **Step 3: Run the full automated suite**
+- [x] **Step 3: Run the full automated suite**
 
 ```bash
 swift test
@@ -1441,7 +1441,7 @@ swift test
 Expected: all unit and integration tests pass; the existing live service test
 remains skipped unless `QWYTHOS_LIVE_INTEGRATION=1`.
 
-- [ ] **Step 4: Build and validate the release app**
+- [x] **Step 4: Build and validate the release app**
 
 ```bash
 scripts/generate-iconset.sh
@@ -1450,7 +1450,7 @@ plutil -lint "build/Qwythos Control.app/Contents/Info.plist"
 codesign --verify --deep --strict "build/Qwythos Control.app"
 ```
 
-- [ ] **Step 5: Document the feature**
+- [x] **Step 5: Document the feature**
 
 Document:
 
@@ -1474,7 +1474,7 @@ From another LAN device, verify unauthenticated requests fail and a request
 with the generated bearer key succeeds. Switch back to local-only and verify
 the LAN endpoint is no longer reachable.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add Tests/QwythosDeploymentTests README.md docs/deployment.md
