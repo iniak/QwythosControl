@@ -27,7 +27,7 @@
 - Consumes: The approved visual constraints in `docs/superpowers/specs/2026-07-27-mythos-core-app-icon-design.md`.
 - Produces: A square RGB/RGBA PNG with exact dimensions `1024 x 1024`.
 
-- [ ] **Step 1: Generate the artwork**
+- [x] **Step 1: Generate the artwork**
 
 Use the built-in image generation tool with this production prompt:
 
@@ -44,13 +44,13 @@ Constraints: Square 1024 x 1024; no text; no letters; crisp silhouette; no eleme
 Avoid: faces, circuitry, stars, particles, scenery, extra symbols, strong bloom, busy textures, watermark.
 ```
 
-- [ ] **Step 2: Inspect the generated master**
+- [x] **Step 2: Inspect the generated master**
 
 Open the generated output and verify the ring count, palette, centered geometry,
 absence of text, and adequate edge padding. Regenerate once with a targeted prompt
 only if one of those invariants fails.
 
-- [ ] **Step 3: Save and validate the master**
+- [x] **Step 3: Save and validate the master**
 
 Run:
 
@@ -60,7 +60,7 @@ sips -g pixelWidth -g pixelHeight Resources/AppIcon.png
 
 Expected: both dimensions are `1024`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Resources/AppIcon.png
@@ -79,7 +79,7 @@ git commit -m "design: add Mythos Core app icon"
 - Consumes: `Resources/AppIcon.png`.
 - Produces: `Resources/AppIcon.icns` containing every required macOS representation.
 
-- [ ] **Step 1: Add the iconset generator**
+- [x] **Step 1: Add the iconset generator**
 
 Create `scripts/generate-iconset.sh`:
 
@@ -122,7 +122,7 @@ cp "$COMPILE_OUTPUT/AppIcon.icns" "$OUTPUT"
 printf '%s\n' "$OUTPUT"
 ```
 
-- [ ] **Step 2: Validate script syntax before execution**
+- [x] **Step 2: Validate script syntax before execution**
 
 Run:
 
@@ -132,7 +132,7 @@ zsh -n scripts/generate-iconset.sh
 
 Expected: exit code `0`.
 
-- [ ] **Step 3: Generate and inspect the icon resource**
+- [x] **Step 3: Generate and inspect the icon resource**
 
 Run:
 
@@ -145,7 +145,7 @@ find build/AppIcon.xcassets/AppIcon.appiconset -name '*.png' | sort
 
 Expected: a valid Apple icon image with all ten standard iconset filenames.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add scripts/generate-iconset.sh Resources/AppIconContents.json Resources/AppIcon.icns
@@ -162,7 +162,7 @@ git commit -m "build: package macOS app icon"
 - Consumes: `Resources/AppIcon.icns`.
 - Produces: `build/Qwythos Control.app` with a declared and bundled app icon.
 
-- [ ] **Step 1: Add a failing bundle assertion**
+- [x] **Step 1: Add a failing bundle assertion**
 
 Run before modifying the build:
 
@@ -173,7 +173,7 @@ test -f "build/Qwythos Control.app/Contents/Resources/AppIcon.icns"
 
 Expected: the assertion fails because the icon is not copied yet.
 
-- [ ] **Step 2: Declare the app icon**
+- [x] **Step 2: Declare the app icon**
 
 Add this entry before `CFBundlePackageType` in `Resources/Info.plist`:
 
@@ -182,7 +182,7 @@ Add this entry before `CFBundlePackageType` in `Resources/Info.plist`:
 <string>AppIcon</string>
 ```
 
-- [ ] **Step 3: Copy the compiled icon during builds**
+- [x] **Step 3: Copy the compiled icon during builds**
 
 Add after the existing `Info.plist` copy in `scripts/build-app.sh`:
 
@@ -190,7 +190,7 @@ Add after the existing `Info.plist` copy in `scripts/build-app.sh`:
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/"
 ```
 
-- [ ] **Step 4: Build and validate**
+- [x] **Step 4: Build and validate**
 
 Run:
 
@@ -203,7 +203,7 @@ codesign --verify --deep --strict "build/Qwythos Control.app"
 
 Expected: all commands exit `0`.
 
-- [ ] **Step 5: Run the project tests**
+- [x] **Step 5: Run the project tests**
 
 Run:
 
@@ -213,7 +213,7 @@ swift test
 
 Expected: all QwythosCore tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Resources/Info.plist scripts/build-app.sh
