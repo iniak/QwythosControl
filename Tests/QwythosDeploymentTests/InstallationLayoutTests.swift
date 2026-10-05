@@ -81,6 +81,26 @@ final class InstallationLayoutTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: locator.fileURL.path))
     }
 
+    func testDeploymentOptionsAcceptSameRootSpelledDifferently() throws {
+        let layout = InstallationLayout(root: URL(fileURLWithPath: "/tmp/Qwythos Root"))
+        let options = DeploymentOptions(
+            root: URL(fileURLWithPath: "/tmp/Qwythos Root/", isDirectory: true),
+            contextSize: 8_192,
+            accessMode: .local
+        )
+
+        XCTAssertNoThrow(try options.validate(for: layout))
+        XCTAssertThrowsError(
+            try DeploymentOptions(
+                root: URL(fileURLWithPath: "/tmp/Other Root"),
+                contextSize: 8_192,
+                accessMode: .local
+            ).validate(for: layout)
+        ) { error in
+            XCTAssertEqual(error as? DeploymentOptionsError, .rootDoesNotMatchLayout)
+        }
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
