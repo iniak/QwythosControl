@@ -104,7 +104,10 @@ public struct DeploymentOptions: Codable, Equatable, Sendable {
     }
 
     public func validate(for layout: InstallationLayout) throws {
-        guard root == layout.root else {
+        // Records store a standardized root, which can differ from the
+        // layout's URL (e.g. a trailing slash) while naming the same path.
+        guard root.standardizedFileURL.path
+            == layout.root.standardizedFileURL.path else {
             throw DeploymentOptionsError.rootDoesNotMatchLayout
         }
         guard Self.supportedContextSizes.contains(contextSize) else {
